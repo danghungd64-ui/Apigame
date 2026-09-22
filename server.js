@@ -1,21 +1,22 @@
-// server.js — Tài Xỉu Auto API
+// server.js — Tài Xỉu Auto API (có seed từ phiên 3260850)
 const http = require('http');
 const url = require('url');
 
 const PORT = process.env.PORT || 3000;
-const INTERVAL_MS = parseInt(process.env.INTERVAL_MS) || 30000; // 30s/phiên
-const HISTORY_SIZE = 200;
+const INTERVAL_MS = parseInt(process.env.INTERVAL_MS) || 30000;
+const HISTORY_SIZE = 500;
 
-// Session ID bắt đầu từ timestamp (hoặc ENV)
-let sessionCounter = parseInt(process.env.START_SESSION) || Math.floor(Date.now() / 1000);
+/* ====== SEED DATA — 2 phiên có sẵn ====== */
+const SEED = [
+  { session: '3260850', dice: [1, 2, 1] },
+  { session: '3260851', dice: [6, 6, 3] },
+];
+
+/* ====== STATE ====== */
+let sessionCounter = 3260852; // phiên tiếp theo sẽ là 3260852
 const sessions = [];
 
-/* ====== RANDOM + CALC ====== */
-function randomDice() {
-  return [rand6(), rand6(), rand6()];
-}
-function rand6() { return Math.ceil(Math.random() * 6); }
-
+/* ====== CALC ====== */
 function computeResult(dice) {
   const sum = dice.reduce((a, b) => a + b, 0);
   const result = sum >= 11 ? 'tài' : 'xỉu';
@@ -23,7 +24,30 @@ function computeResult(dice) {
   return { sum, result, type };
 }
 
-/* ====== GENERATE 1 PHIÊN ====== */
+/* ====== BUILD SEED SESSIONS ====== */
+function buildSeed() {
+  SEED.forEach((s, i) => {
+    const { sum, result, type } = computeResult(s.dice);
+    sessions.push({
+      session: s.session,
+      dice: s.dice,
+      sum,
+      result,
+      type,
+      time: new Date(Date.now() - (SEED.length - i) * INTERVAL_MS).toISOString(),
+      seeded: true
+    });
+  });
+  console.log('📌 Seed:');
+  sessions.forEach(s => console.log(`   #${s.session}: ${s.dice.join('-')} = ${s.sum} → ${s.result.toUpperCase()}`));
+}
+
+/* ====== GENERATE NEW SESSION ====== */
+function randomDice() {
+  return [rand6(), rand6(), rand6()];
+}
+function rand6() { return Math.ceil(Math.random() * 6); }
+
 function generateSession() {
   const session = String(sessionCounter++);
   const dice = randomDice();
@@ -43,7 +67,7 @@ function generateSession() {
   return rec;
 }
 
-/* ====== PREDICT (đảo cầu đơn giản) ====== */
+/* ====== PREDICT ====== */
 function predict() {
   const w = sessions.slice(-10);
   if (!w.length) return { prediction: 'tài', confidence: 0, based_on: 0 };
@@ -84,6 +108,8 @@ const server = http.createServer((req, res) => {
       name: 'Tài Xỉu Auto API',
       status: 'running',
       interval_ms: INTERVAL_MS,
+      start_session: 3260850,
+      next_session: sessionCounter,
       total_sessions: sessions.length,
       current_session: sessions[sessions.length - 1]?.session,
       endpoints: [
@@ -107,11 +133,11 @@ const server = http.createServer((req, res) => {
   }
 
   if (p === '/api/history') {
-    const limit = Math.min(parseInt(parsed.query.limit) || 50, 200);
+    const limit = Math.min(parseInt(parsed.query.limit) || 50, 500);
     return json(res, {
       current_session: sessions[sessions.length - 1]?.session || '',
       total: sessions.length,
-      history: sessions.slice(-limit).reverse()
+      history: sessions.slice(-limit).reverse()  // mới nhất lên đầu
     });
   }
 
@@ -150,11 +176,13 @@ const server = http.createServer((req, res) => {
 });
 
 /* ====== START ====== */
-generateSession(); // phiên đầu
-setInterval(generateSession, INTERVAL_MS);
+buildSeed();                                // nạp 2 phiên seed
+generateSession();                          // sinh phiên 3260852
+setInterval(generateSession, INTERVAL_MS);  // tự sinh tiếp
 
 server.listen(PORT, () => {
-  console.log(`🎲 Tài Xỉu Auto API: http://localhost:${PORT}`);
+  console.log(`\n🎲 Tài Xỉu Auto API: http://localhost:${PORT}`);
   console.log(`   Sinh phiên mới mỗi ${INTERVAL_MS / 1000}s`);
-  console.log(`   Session bắt đầu: ${sessionCounter - 1}`);
+  console.log(`   Phiên hiện tại: ${sessions[sessions.length - 1]?.session}`);
+  console.log(`   Phiên tiếp theo sẽ là: ${sessionCounter}\n`);
 });
