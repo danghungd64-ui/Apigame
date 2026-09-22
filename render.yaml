@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: taixiu-auto-api
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: INTERVAL_MS
+        value: "30000"
